@@ -24,13 +24,13 @@
       ]
     },
     {
-      "source": "/(.*).css",
+      "source": "/styles.css",
       "headers": [
         { "key": "Cache-Control", "value": "public, max-age=86400" }
       ]
     },
     {
-      "source": "/(.*).js",
+      "source": "/supabase-config.js",
       "headers": [
         { "key": "Cache-Control", "value": "public, max-age=86400" }
       ]
