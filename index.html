@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Acadèmia Impulsa't</title>
+
+  <!-- PWA -->
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#1E183F" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Impulsa't" />
+  <meta name="application-name" content="Impulsa't" />
+  <meta name="description" content="Gestió interna de l'Acadèmia Impulsa't" />
+
+  <!-- Icons -->
+  <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+  <link rel="apple-touch-icon" sizes="152x152" href="/icons/icon-152x152.png" />
+  <link rel="apple-touch-icon" sizes="192x192" href="/icons/icon-192x192.png" />
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<!-- ===== SIDEBAR ===== -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <div class="logo">
+      <div class="logo-icon"><img src="/icons/icon-72x72.png" alt="Impulsa't" style="width:40px;height:40px;object-fit:contain;border-radius:8px;" /></div>
+      <div class="logo-text">
+        <span class="logo-name">Impulsa't</span>
+        <span class="logo-sub">Acadèmia</span>
+      </div>
+    </div>
+  </div>
+
+  <nav class="sidebar-nav">
+    <a href="#" class="nav-item active" data-section="dashboard">
+      <span class="nav-icon">◈</span>
+      <span>Dashboard</span>
+    </a>
+    <a href="#" class="nav-item" data-section="students">
+      <span class="nav-icon">◉</span>
+      <span>Alumnes</span>
+    </a>
+    <a href="#" class="nav-item" data-section="teachers">
+      <span class="nav-icon">◎</span>
+      <span>Professors</span>
+    </a>
+    <a href="#" class="nav-item" data-section="schedule">
+      <span class="nav-icon">◷</span>
+      <span>Horaris</span>
+    </a>
+    <a href="#" class="nav-item" data-section="payments">
+      <span class="nav-icon">◈</span>
+      <span>Pagaments</span>
+    </a>
+    <a href="#" class="nav-item" data-section="finances">
+      <span class="nav-icon">◐</span>
+      <span>Finances</span>
+    </a>
+    <a href="#" class="nav-item" data-section="tasks">
+      <span class="nav-icon">◻</span>
+      <span>Tasques</span>
+    </a>
+  </nav>
+
+  <div class="sidebar-footer">
+    <div class="sidebar-date" id="sidebarDate"></div>
+  </div>
+</aside>
+
+<!-- ===== MAIN CONTENT ===== -->
+<main class="main">
+
+  <!-- TOPBAR -->
+  <header class="topbar">
+    <button class="menu-toggle" id="menuToggle" onclick="document.getElementById('sidebar').classList.toggle('open')">☰</button>
+    <h1 class="page-title" id="pageTitle">Dashboard</h1>
+    <div class="topbar-right">
+      <span class="current-time" id="currentTime"></span>
+    </div>
+  </header>
+
+  <!-- TOAST -->
+  <div class="toast" id="toast"></div>
+
+  <!-- MODAL -->
+  <div class="modal-overlay" id="modalOverlay" onclick="closeModal()">
+    <div class="modal" id="modal" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <h2 class="modal-title" id="modalTitle">Formulari</h2>
+        <button class="modal-close" onclick="closeModal()">✕</button>
+      </div>
+      <div class="modal-body" id="modalBody"></div>
+    </div>
+  </div>
+
+  <!-- CONFIRM DIALOG -->
+  <div class="modal-overlay" id="confirmOverlay">
+    <div class="modal modal-sm">
+      <div class="modal-header">
+        <h2 class="modal-title">Confirmar acció</h2>
+      </div>
+      <div class="modal-body">
+        <p id="confirmMessage">Estàs segur?</p>
+        <div class="form-actions" style="margin-top:1.5rem">
+          <button class="btn btn-danger" id="confirmOk">Eliminar</button>
+          <button class="btn btn-ghost" onclick="document.getElementById('confirmOverlay').classList.remove('active')">Cancel·lar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== SECTIONS ===== -->
+
+  <!-- DASHBOARD -->
+  <section class="section active" id="section-dashboard">
+    <div class="section-inner">
+      <div class="alerts-bar" id="alertsBar"></div>
+
+      <div class="stats-grid" id="statsGrid">
+        <div class="stat-card loading"></div>
+        <div class="stat-card loading"></div>
+        <div class="stat-card loading"></div>
+        <div class="stat-card loading"></div>
+        <div class="stat-card loading"></div>
+        <div class="stat-card loading"></div>
+      </div>
+
+      <div class="dashboard-grid">
+        <div class="card">
+          <div class="card-header">
+            <h3>Renovacions pròximes <span class="badge badge-warning" id="renewalCount">0</span></h3>
+          </div>
+          <div id="renewalList" class="item-list"></div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <h3>Pagaments pendents <span class="badge badge-danger" id="pendingCount">0</span></h3>
+          </div>
+          <div id="pendingList" class="item-list"></div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <h3>Classes d'avui</h3>
+          </div>
+          <div id="todayClasses" class="item-list"></div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <h3>Tasques del dia</h3>
+          </div>
+          <div id="todayTasks" class="item-list"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- STUDENTS -->
+  <section class="section" id="section-students">
+    <div class="section-inner">
+      <div class="section-toolbar">
+        <div class="toolbar-filters">
+          <input type="text" class="input input-sm" placeholder="Cercar alumne..." id="studentSearch" oninput="filterStudents()" />
+          <select class="input input-sm" id="studentStatusFilter" onchange="filterStudents()">
+            <option value="">Tots els estats</option>
+            <option value="actiu">Actiu</option>
+            <option value="pausat">Pausat</option>
+            <option value="baixa">Baixa</option>
+          </select>
+        </div>
+        <button class="btn btn-primary" onclick="openStudentForm()">+ Nou alumne</button>
+      </div>
+      <div class="card">
+        <table class="table" id="studentsTable">
+          <thead>
+            <tr>
+              <th>Nom</th>
+              <th>Curs</th>
+              <th>Telèfon</th>
+              <th>Preu/mes</th>
+              <th>Renovació</th>
+              <th>Estat</th>
+              <th>Accions</th>
+            </tr>
+          </thead>
+          <tbody id="studentsTbody"></tbody>
+        </table>
+        <div class="empty-state" id="studentsEmpty" style="display:none">
+          <div class="empty-icon">👩‍🎓</div>
+          <p>Encara no hi ha alumnes registrats.</p>
+          <button class="btn btn-primary" onclick="openStudentForm()">Afegir primer alumne</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TEACHERS -->
+  <section class="section" id="section-teachers">
+    <div class="section-inner">
+      <div class="section-toolbar">
+        <div class="toolbar-filters">
+          <input type="text" class="input input-sm" placeholder="Cercar professor..." id="teacherSearch" oninput="filterTeachers()" />
+        </div>
+        <button class="btn btn-primary" onclick="openTeacherForm()">+ Nou professor</button>
+      </div>
+      <div class="card">
+        <table class="table" id="teachersTable">
+          <thead>
+            <tr>
+              <th>Nom</th>
+              <th>Assignatures</th>
+              <th>Telèfon</th>
+              <th>Email</th>
+              <th>Estat</th>
+              <th>Accions</th>
+            </tr>
+          </thead>
+          <tbody id="teachersTbody"></tbody>
+        </table>
+        <div class="empty-state" id="teachersEmpty" style="display:none">
+          <div class="empty-icon">👨‍🏫</div>
+          <p>Encara no hi ha professors registrats.</p>
+          <button class="btn btn-primary" onclick="openTeacherForm()">Afegir primer professor</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SCHEDULE -->
+  <section class="section" id="section-schedule">
+    <div class="section-inner">
+      <div class="section-toolbar">
+        <div class="toolbar-filters">
+          <select class="input input-sm" id="scheduleTeacherFilter" onchange="renderSchedule()">
+            <option value="">Tots els professors</option>
+          </select>
+          <select class="input input-sm" id="scheduleStudentFilter" onchange="renderSchedule()">
+            <option value="">Tots els alumnes</option>
+          </select>
+        </div>
+        <button class="btn btn-primary" onclick="openClassForm()">+ Nova classe</button>
+      </div>
+      <div id="weeklySchedule" class="weekly-grid"></div>
+    </div>
+  </section>
+
+  <!-- PAYMENTS -->
+  <section class="section" id="section-payments">
+    <div class="section-inner">
+      <div class="section-toolbar">
+        <div class="toolbar-filters">
+          <select class="input input-sm" id="paymentStudentFilter" onchange="filterPayments()">
+            <option value="">Tots els alumnes</option>
+          </select>
+          <select class="input input-sm" id="paymentStatusFilter" onchange="filterPayments()">
+            <option value="">Tots els estats</option>
+            <option value="pendent">Pendent</option>
+            <option value="pagat">Pagat</option>
+            <option value="vençut">Vençut</option>
+          </select>
+          <select class="input input-sm" id="paymentMonthFilter" onchange="filterPayments()">
+            <option value="">Tots els mesos</option>
+          </select>
+        </div>
+        <button class="btn btn-primary" onclick="openPaymentForm()">+ Nou pagament</button>
+      </div>
+      <div class="card">
+        <table class="table" id="paymentsTable">
+          <thead>
+            <tr>
+              <th>Alumne</th>
+              <th>Mes</th>
+              <th>Import</th>
+              <th>Venciment</th>
+              <th>Mètode</th>
+              <th>Estat</th>
+              <th>Accions</th>
+            </tr>
+          </thead>
+          <tbody id="paymentsTbody"></tbody>
+        </table>
+        <div class="empty-state" id="paymentsEmpty" style="display:none">
+          <div class="empty-icon">💳</div>
+          <p>Encara no hi ha pagaments registrats.</p>
+          <button class="btn btn-primary" onclick="openPaymentForm()">Afegir primer pagament</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FINANCES -->
+  <section class="section" id="section-finances">
+    <div class="section-inner">
+      <div class="finance-summary" id="financeSummary"></div>
+      <div class="section-toolbar" style="margin-top:2rem">
+        <div class="toolbar-filters">
+          <select class="input input-sm" id="expenseMonthFilter" onchange="filterExpenses()">
+            <option value="">Tots els mesos</option>
+          </select>
+          <select class="input input-sm" id="expenseCategoryFilter" onchange="filterExpenses()">
+            <option value="">Totes les categories</option>
+            <option value="Lloguer">Lloguer</option>
+            <option value="Material">Material</option>
+            <option value="Professors">Professors</option>
+            <option value="Subministraments">Subministraments</option>
+            <option value="Publicitat">Publicitat</option>
+            <option value="Manteniment">Manteniment</option>
+            <option value="Altres">Altres</option>
+          </select>
+        </div>
+        <button class="btn btn-primary" onclick="openExpenseForm()">+ Nou gasto</button>
+      </div>
+      <div class="card">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Concepte</th>
+              <th>Categoria</th>
+              <th>Import</th>
+              <th>Data</th>
+              <th>Mètode</th>
+              <th>Accions</th>
+            </tr>
+          </thead>
+          <tbody id="expensesTbody"></tbody>
+        </table>
+        <div class="empty-state" id="expensesEmpty" style="display:none">
+          <div class="empty-icon">📊</div>
+          <p>Encara no hi ha gastos registrats.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TASKS -->
+  <section class="section" id="section-tasks">
+    <div class="section-inner">
+      <!-- Quick add -->
+      <div class="card task-quick-add">
+        <input type="text" class="input" id="quickTaskTitle" placeholder="Escriu una tasca ràpida..." onkeydown="if(event.key==='Enter') quickAddTask()" />
+        <div class="quick-task-row">
+          <select class="input input-sm" id="quickTaskPriority">
+            <option value="baixa">Prioritat baixa</option>
+            <option value="mitja" selected>Prioritat mitja</option>
+            <option value="alta">Prioritat alta</option>
+          </select>
+          <select class="input input-sm" id="quickTaskCategory">
+            <option value="">Cap categoria</option>
+            <option value="pagaments">Pagaments</option>
+            <option value="alumnes">Alumnes</option>
+            <option value="professors">Professors</option>
+            <option value="organització">Organització</option>
+            <option value="trucada">Trucada</option>
+            <option value="material">Material</option>
+            <option value="altre">Altre</option>
+          </select>
+          <button class="btn btn-primary" onclick="quickAddTask()">Afegir</button>
+        </div>
+      </div>
+
+      <div class="section-toolbar" style="margin-top:1.5rem">
+        <div class="toolbar-filters">
+          <select class="input input-sm" id="taskStatusFilter" onchange="filterTasks()">
+            <option value="pendent">Pendents</option>
+            <option value="completada">Completades</option>
+            <option value="">Totes</option>
+          </select>
+          <select class="input input-sm" id="taskPriorityFilter" onchange="filterTasks()">
+            <option value="">Totes les prioritats</option>
+            <option value="alta">Alta</option>
+            <option value="mitja">Mitja</option>
+            <option value="baixa">Baixa</option>
+          </select>
+        </div>
+        <button class="btn btn-ghost" onclick="openTaskForm()">+ Tasca detallada</button>
+      </div>
+
+      <div id="tasksList" class="tasks-list"></div>
+      <div class="empty-state" id="tasksEmpty" style="display:none">
+        <div class="empty-icon">✅</div>
+        <p>No hi ha tasques pendents. Molt bé!</p>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- Supabase SDK -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-config.js"></script>
+<script src="app.js"></script>
+
+<!-- Service Worker (PWA) -->
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/service-worker.js')
+      .then(reg => console.log('[PWA] Service Worker registrat:', reg.scope))
+      .catch(err => console.warn('[PWA] Error registrant SW:', err));
+  });
+}
+
+// Detecta paràmetre ?section= per als shortcuts de la PWA
+const urlParams = new URLSearchParams(window.location.search);
+const sectionParam = urlParams.get('section');
+if (sectionParam) {
+  window.addEventListener('DOMContentLoaded', () => {
+    setTimeout(() => navigate(sectionParam), 100);
+  });
+}
+</script>
+</body>
+</html>

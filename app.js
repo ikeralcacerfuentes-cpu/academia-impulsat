@@ -1,0 +1,1116 @@
+// ============================================================
+//  app.js — Acadèmia Impulsa't
+//  JavaScript principal — lògica de l'app
+// ============================================================
+
+// ── Supabase init ──────────────────────────────────────────
+let supabase;
+try {
+  supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+} catch(e) {
+  console.warn("Supabase no inicialitzat. Revisa supabase-config.js");
+}
+
+// ── State ──────────────────────────────────────────────────
+let students  = [];
+let teachers  = [];
+let classes   = [];
+let payments  = [];
+let expenses  = [];
+let tasks     = [];
+let editingId = null;
+
+// ── Dates / Clock ──────────────────────────────────────────
+const TODAY = new Date();
+const DAYS_ES = ['Diumenge','Dilluns','Dimarts','Dimecres','Dijous','Divendres','Dissabte'];
+const MONTHS_ES = ['gener','febrer','març','abril','maig','juny','juliol','agost','setembre','octubre','novembre','desembre'];
+
+function todayStr() {
+  return TODAY.toISOString().split('T')[0];
+}
+
+function formatDate(d) {
+  if (!d) return '—';
+  const dt = new Date(d + 'T00:00:00');
+  return `${dt.getDate()} ${MONTHS_ES[dt.getMonth()]} ${dt.getFullYear()}`;
+}
+
+function formatMoney(n) {
+  return parseFloat(n || 0).toFixed(2).replace('.', ',') + ' €';
+}
+
+function currentMonth() {
+  const m = TODAY.getMonth() + 1;
+  const y = TODAY.getFullYear();
+  return `${y}-${String(m).padStart(2,'0')}`;
+}
+
+function updateClock() {
+  const now = new Date();
+  const h = String(now.getHours()).padStart(2,'0');
+  const m = String(now.getMinutes()).padStart(2,'0');
+  document.getElementById('currentTime').textContent = `${h}:${m}`;
+  document.getElementById('sidebarDate').innerHTML =
+    `${DAYS_ES[now.getDay()]}<br>${now.getDate()} ${MONTHS_ES[now.getMonth()]} ${now.getFullYear()}`;
+}
+
+// ── Toast ──────────────────────────────────────────────────
+let toastTimer;
+function showToast(msg, type = 'success') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = `toast show toast-${type}`;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 3000);
+}
+
+// ── Confirm ────────────────────────────────────────────────
+function confirmAction(msg, cb) {
+  document.getElementById('confirmMessage').textContent = msg;
+  const overlay = document.getElementById('confirmOverlay');
+  overlay.classList.add('active');
+  const okBtn = document.getElementById('confirmOk');
+  const newOk = okBtn.cloneNode(true);
+  okBtn.parentNode.replaceChild(newOk, okBtn);
+  newOk.addEventListener('click', () => {
+    overlay.classList.remove('active');
+    cb();
+  });
+}
+
+// ── Modal ──────────────────────────────────────────────────
+function openModal(title, html) {
+  document.getElementById('modalTitle').textContent = title;
+  document.getElementById('modalBody').innerHTML = html;
+  document.getElementById('modalOverlay').classList.add('active');
+}
+
+function closeModal() {
+  document.getElementById('modalOverlay').classList.remove('active');
+  editingId = null;
+}
+
+// ── Navigation ─────────────────────────────────────────────
+document.querySelectorAll('.nav-item').forEach(item => {
+  item.addEventListener('click', e => {
+    e.preventDefault();
+    const sec = item.dataset.section;
+    navigate(sec);
+    document.getElementById('sidebar').classList.remove('open');
+  });
+});
+
+function navigate(sec) {
+  document.querySelectorAll('.nav-item').forEach(i => i.classList.toggle('active', i.dataset.section === sec));
+  document.querySelectorAll('.section').forEach(s => s.classList.toggle('active', s.id === `section-${sec}`));
+  const titles = { dashboard:'Dashboard', students:'Alumnes', teachers:'Professors', schedule:'Horaris', payments:'Pagaments', finances:'Finances', tasks:'Tasques' };
+  document.getElementById('pageTitle').textContent = titles[sec] || sec;
+  if (sec === 'dashboard')  loadDashboard();
+  if (sec === 'students')   renderStudents();
+  if (sec === 'teachers')   renderTeachers();
+  if (sec === 'schedule')   renderSchedule();
+  if (sec === 'payments')   renderPayments();
+  if (sec === 'finances')   renderFinances();
+  if (sec === 'tasks')      renderTasks();
+}
+
+// ── Load all data ──────────────────────────────────────────
+async function loadAll() {
+  if (!supabase) { showToast("Configura les credencials de Supabase!", 'error'); return; }
+  try {
+    const [s, t, c, p, e, k] = await Promise.all([
+      supabase.from('students').select('*').order('name'),
+      supabase.from('teachers').select('*').order('name'),
+      supabase.from('classes').select('*').order('day_order').order('start_time'),
+      supabase.from('payments').select('*').order('due_date', { ascending: false }),
+      supabase.from('expenses').select('*').order('date', { ascending: false }),
+      supabase.from('tasks').select('*').order('created_at', { ascending: false }),
+    ]);
+    students = s.data || [];
+    teachers = t.data || [];
+    classes  = c.data || [];
+    payments = p.data || [];
+    expenses = e.data || [];
+    tasks    = k.data || [];
+    updatePaymentStatuses();
+    loadDashboard();
+  } catch(err) {
+    showToast("Error carregant dades: " + err.message, 'error');
+  }
+}
+
+// ── Auto-update payment status ─────────────────────────────
+async function updatePaymentStatuses() {
+  const today = todayStr();
+  const toUpdate = payments.filter(p => p.status === 'pendent' && p.due_date && p.due_date < today);
+  for (const p of toUpdate) {
+    await supabase.from('payments').update({ status: 'vençut' }).eq('id', p.id);
+    p.status = 'vençut';
+  }
+}
+
+// ── DASHBOARD ─────────────────────────────────────────────
+function loadDashboard() {
+  const month = currentMonth();
+  const activeStudents = students.filter(s => s.status === 'actiu');
+  const pendingPayments = payments.filter(p => p.status === 'pendent');
+  const overduePayments = payments.filter(p => p.status === 'vençut');
+  const monthIncome = payments.filter(p => p.status === 'pagat' && (p.payment_month || '').startsWith(month)).reduce((a,p) => a + parseFloat(p.amount||0), 0);
+  const monthExpenses = expenses.filter(e => e.date && e.date.startsWith(month)).reduce((a,e) => a + parseFloat(e.amount||0), 0);
+  const balance = monthIncome - monthExpenses;
+
+  // Renewals in next 7 days
+  const soon = [];
+  const todayDate = TODAY;
+  activeStudents.forEach(s => {
+    if (!s.renewal_day) return;
+    const d = new Date(todayDate.getFullYear(), todayDate.getMonth(), s.renewal_day);
+    if (d < todayDate) d.setMonth(d.getMonth() + 1);
+    const diff = Math.ceil((d - todayDate) / 86400000);
+    if (diff >= 0 && diff <= 7) soon.push({ student: s, date: d, diff });
+  });
+
+  // Stats
+  const statsGrid = document.getElementById('statsGrid');
+  statsGrid.innerHTML = `
+    <div class="stat-card stat-card-orange">
+      <div class="stat-label">Ingressos del mes</div>
+      <div class="stat-value income">${formatMoney(monthIncome)}</div>
+      <div class="stat-accent"></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Gastos del mes</div>
+      <div class="stat-value expense">${formatMoney(monthExpenses)}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Balanç estimat</div>
+      <div class="stat-value ${balance >= 0 ? 'balance-pos' : 'balance-neg'}">${formatMoney(balance)}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Alumnes actius</div>
+      <div class="stat-value">${activeStudents.length}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Pagaments pendents</div>
+      <div class="stat-value" style="color:var(--yellow)">${pendingPayments.length}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Pagaments vençuts</div>
+      <div class="stat-value" style="color:var(--red)">${overduePayments.length}</div>
+    </div>
+  `;
+
+  // Alerts
+  const alerts = [];
+  if (overduePayments.length)
+    alerts.push({ type:'danger', msg:`⚠️ ${overduePayments.length} pagament(s) vençut(s) sense cobrar.` });
+  if (soon.length)
+    alerts.push({ type:'warning', msg:`🔔 ${soon.length} alumne(s) amb renovació en menys de 7 dies.` });
+  const highTasks = tasks.filter(t => t.priority === 'alta' && t.status === 'pendent');
+  if (highTasks.length)
+    alerts.push({ type:'danger', msg:`🔴 ${highTasks.length} tasca(es) d'alta prioritat pendents.` });
+
+  document.getElementById('alertsBar').innerHTML = alerts.map(a =>
+    `<div class="alert alert-${a.type}">${a.msg}</div>`).join('') || '';
+
+  // Renewals list
+  document.getElementById('renewalCount').textContent = soon.length;
+  document.getElementById('renewalList').innerHTML = soon.length ? soon.map(r =>
+    `<div class="item-row">
+      <div>
+        <div class="item-row-name">${r.student.name} ${r.student.surname}</div>
+        <div class="item-row-sub">${r.diff === 0 ? 'Avui' : `En ${r.diff} dia${r.diff>1?'s':''}`}</div>
+      </div>
+      <div class="badge badge-yellow">${formatMoney(r.student.monthly_price)}</div>
+    </div>`).join('') : '<div class="item-row item-row-sub" style="padding:1rem">Cap renovació propera</div>';
+
+  // Pending list
+  document.getElementById('pendingCount').textContent = pendingPayments.length + overduePayments.length;
+  const allPending = [...overduePayments, ...pendingPayments].slice(0, 8);
+  document.getElementById('pendingList').innerHTML = allPending.length ? allPending.map(p => {
+    const st = students.find(s => s.id === p.student_id);
+    return `<div class="item-row">
+      <div>
+        <div class="item-row-name">${st ? st.name + ' ' + st.surname : '—'}</div>
+        <div class="item-row-sub">${p.payment_month || ''}</div>
+      </div>
+      <span class="badge ${p.status==='vençut'?'badge-red':'badge-yellow'}">${p.status}</span>
+    </div>`;
+  }).join('') : '<div class="item-row item-row-sub" style="padding:1rem">Cap pagament pendent 🎉</div>';
+
+  // Today's classes
+  const todayDayIdx = TODAY.getDay(); // 0=Sun
+  const todayClasses = classes.filter(c => c.day_order === todayDayIdx);
+  document.getElementById('todayClasses').innerHTML = todayClasses.length ? todayClasses.map(c => {
+    const teacher = teachers.find(t => t.id === c.teacher_id);
+    return `<div class="item-row">
+      <div>
+        <div class="item-row-name">${c.start_time?.slice(0,5)} — ${c.subject || ''}</div>
+        <div class="item-row-sub">${teacher ? teacher.name + ' ' + teacher.surname : ''} · ${c.students_label || ''}</div>
+      </div>
+    </div>`;
+  }).join('') : '<div class="item-row item-row-sub" style="padding:1rem">No hi ha classes avui</div>';
+
+  // Today tasks
+  const todayTasks = tasks.filter(t => t.status === 'pendent').slice(0, 5);
+  document.getElementById('todayTasks').innerHTML = todayTasks.length ? todayTasks.map(t =>
+    `<div class="item-row">
+      <div>
+        <div class="item-row-name">${t.title}</div>
+        <div class="item-row-sub">${t.category || ''}</div>
+      </div>
+      <span class="badge ${t.priority==='alta'?'badge-red':t.priority==='mitja'?'badge-yellow':'badge-green'}">${t.priority}</span>
+    </div>`).join('') : '<div class="item-row item-row-sub" style="padding:1rem">Totes les tasques fetes! ✅</div>';
+}
+
+// ════════════════════════════════════════════════
+//  STUDENTS
+// ════════════════════════════════════════════════
+function renderStudents() {
+  const search = (document.getElementById('studentSearch')?.value || '').toLowerCase();
+  const statusF = document.getElementById('studentStatusFilter')?.value || '';
+  let list = students.filter(s => {
+    const name = (s.name + ' ' + s.surname).toLowerCase();
+    return (!search || name.includes(search)) && (!statusF || s.status === statusF);
+  });
+
+  const tbody = document.getElementById('studentsTbody');
+  const empty = document.getElementById('studentsEmpty');
+  const table = document.getElementById('studentsTable');
+
+  if (!list.length) {
+    table.style.display = 'none'; empty.style.display = '';
+    return;
+  }
+  table.style.display = ''; empty.style.display = 'none';
+
+  tbody.innerHTML = list.map(s => {
+    const pendingCount = payments.filter(p => p.student_id === s.id && (p.status === 'pendent' || p.status === 'vençut')).length;
+    const statusBadge = { actiu:'badge-green', pausat:'badge-yellow', baixa:'badge-gray' };
+    return `<tr>
+      <td>
+        <div style="font-weight:600">${s.name} ${s.surname}</div>
+        <div style="color:var(--text-sec);font-size:.78rem">${s.email||''}</div>
+      </td>
+      <td>${s.course || '—'}</td>
+      <td>${s.phone || '—'}</td>
+      <td style="font-weight:600">${formatMoney(s.monthly_price)}</td>
+      <td>Dia ${s.renewal_day || '—'}</td>
+      <td>
+        <span class="badge ${statusBadge[s.status]||'badge-gray'}">${s.status}</span>
+        ${pendingCount ? `<span class="badge badge-red" style="margin-left:.35rem">${pendingCount} pendent</span>` : ''}
+      </td>
+      <td>
+        <div class="actions">
+          <button class="btn btn-icon btn-sm" onclick="openStudentForm('${s.id}')" title="Editar">✏️</button>
+          <button class="btn btn-icon btn-sm" onclick="deleteStudent('${s.id}')" title="Eliminar">🗑</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function filterStudents() { renderStudents(); }
+
+function openStudentForm(id = null) {
+  editingId = id;
+  const s = id ? students.find(x => x.id === id) : {};
+  openModal(id ? 'Editar alumne' : 'Nou alumne', `
+    <div class="form-row">
+      <div class="form-group">
+        <label>Nom *</label>
+        <input class="input" id="f_name" value="${s.name||''}" placeholder="Nom" />
+      </div>
+      <div class="form-group">
+        <label>Cognoms *</label>
+        <input class="input" id="f_surname" value="${s.surname||''}" placeholder="Cognoms" />
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Curs / Nivell</label>
+        <input class="input" id="f_course" value="${s.course||''}" placeholder="ex: 3r ESO" />
+      </div>
+      <div class="form-group">
+        <label>Estat</label>
+        <select class="input" id="f_status">
+          ${['actiu','pausat','baixa'].map(o=>`<option value="${o}" ${s.status===o?'selected':''}>${o}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Assignatures</label>
+      <input class="input" id="f_subjects" value="${s.subjects||''}" placeholder="ex: Matemàtiques, Física" />
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Telèfon familiar</label>
+        <input class="input" id="f_phone" value="${s.phone||''}" placeholder="600 000 000" />
+      </div>
+      <div class="form-group">
+        <label>Email familiar</label>
+        <input class="input" id="f_email" type="email" value="${s.email||''}" placeholder="email@exemple.com" />
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Preu mensual (€)</label>
+        <input class="input" id="f_price" type="number" step="0.01" value="${s.monthly_price||''}" placeholder="0.00" />
+      </div>
+      <div class="form-group">
+        <label>Dia de renovació</label>
+        <input class="input" id="f_renewal" type="number" min="1" max="31" value="${s.renewal_day||''}" placeholder="ex: 1" />
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Notas internes</label>
+      <textarea class="input" id="f_notes">${s.notes||''}</textarea>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="saveStudent()">💾 Guardar</button>
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel·lar</button>
+    </div>
+  `);
+}
+
+async function saveStudent() {
+  const data = {
+    name: document.getElementById('f_name').value.trim(),
+    surname: document.getElementById('f_surname').value.trim(),
+    course: document.getElementById('f_course').value.trim(),
+    status: document.getElementById('f_status').value,
+    subjects: document.getElementById('f_subjects').value.trim(),
+    phone: document.getElementById('f_phone').value.trim(),
+    email: document.getElementById('f_email').value.trim(),
+    monthly_price: parseFloat(document.getElementById('f_price').value) || 0,
+    renewal_day: parseInt(document.getElementById('f_renewal').value) || null,
+    notes: document.getElementById('f_notes').value.trim(),
+  };
+  if (!data.name || !data.surname) { showToast("Nom i cognoms són obligatoris", 'error'); return; }
+  try {
+    if (editingId) {
+      const { error } = await supabase.from('students').update(data).eq('id', editingId);
+      if (error) throw error;
+      students = students.map(s => s.id === editingId ? { ...s, ...data } : s);
+      showToast("Alumne actualitzat ✓");
+    } else {
+      const { data: res, error } = await supabase.from('students').insert(data).select().single();
+      if (error) throw error;
+      students.push(res);
+      showToast("Alumne afegit ✓");
+    }
+    closeModal(); renderStudents();
+  } catch(e) { showToast("Error: " + e.message, 'error'); }
+}
+
+async function deleteStudent(id) {
+  const s = students.find(x => x.id === id);
+  confirmAction(`Eliminar l'alumne "${s?.name} ${s?.surname}"? Aquesta acció és permanent.`, async () => {
+    try {
+      await supabase.from('students').delete().eq('id', id);
+      students = students.filter(x => x.id !== id);
+      renderStudents(); showToast("Alumne eliminat");
+    } catch(e) { showToast("Error: " + e.message, 'error'); }
+  });
+}
+
+// ════════════════════════════════════════════════
+//  TEACHERS
+// ════════════════════════════════════════════════
+function renderTeachers() {
+  const search = (document.getElementById('teacherSearch')?.value || '').toLowerCase();
+  let list = teachers.filter(t => {
+    const name = (t.name + ' ' + t.surname).toLowerCase();
+    return !search || name.includes(search);
+  });
+
+  const tbody = document.getElementById('teachersTbody');
+  const empty = document.getElementById('teachersEmpty');
+  const table = document.getElementById('teachersTable');
+
+  if (!list.length) { table.style.display = 'none'; empty.style.display = ''; return; }
+  table.style.display = ''; empty.style.display = 'none';
+
+  tbody.innerHTML = list.map(t => `<tr>
+    <td style="font-weight:600">${t.name} ${t.surname}</td>
+    <td>${t.subjects||'—'}</td>
+    <td>${t.phone||'—'}</td>
+    <td>${t.email||'—'}</td>
+    <td><span class="badge ${t.status==='actiu'?'badge-green':'badge-gray'}">${t.status||'actiu'}</span></td>
+    <td>
+      <div class="actions">
+        <button class="btn btn-icon btn-sm" onclick="openTeacherForm('${t.id}')">✏️</button>
+        <button class="btn btn-icon btn-sm" onclick="deleteTeacher('${t.id}')">🗑</button>
+      </div>
+    </td>
+  </tr>`).join('');
+}
+
+function filterTeachers() { renderTeachers(); }
+
+function openTeacherForm(id = null) {
+  editingId = id;
+  const t = id ? teachers.find(x => x.id === id) : {};
+  openModal(id ? 'Editar professor' : 'Nou professor', `
+    <div class="form-row">
+      <div class="form-group"><label>Nom *</label><input class="input" id="f_name" value="${t.name||''}" /></div>
+      <div class="form-group"><label>Cognoms *</label><input class="input" id="f_surname" value="${t.surname||''}" /></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Telèfon</label><input class="input" id="f_phone" value="${t.phone||''}" /></div>
+      <div class="form-group"><label>Email</label><input class="input" id="f_email" type="email" value="${t.email||''}" /></div>
+    </div>
+    <div class="form-group"><label>Assignatures</label><input class="input" id="f_subjects" value="${t.subjects||''}" /></div>
+    <div class="form-group"><label>Disponibilitat / Horari</label><input class="input" id="f_availability" value="${t.availability||''}" placeholder="ex: dilluns-divendres 16-20h" /></div>
+    <div class="form-group"><label>Estat</label>
+      <select class="input" id="f_status">
+        <option value="actiu" ${t.status==='actiu'||!t.status?'selected':''}>Actiu</option>
+        <option value="inactiu" ${t.status==='inactiu'?'selected':''}>Inactiu</option>
+      </select>
+    </div>
+    <div class="form-group"><label>Notes</label><textarea class="input" id="f_notes">${t.notes||''}</textarea></div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="saveTeacher()">💾 Guardar</button>
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel·lar</button>
+    </div>
+  `);
+}
+
+async function saveTeacher() {
+  const data = {
+    name: document.getElementById('f_name').value.trim(),
+    surname: document.getElementById('f_surname').value.trim(),
+    phone: document.getElementById('f_phone').value.trim(),
+    email: document.getElementById('f_email').value.trim(),
+    subjects: document.getElementById('f_subjects').value.trim(),
+    availability: document.getElementById('f_availability').value.trim(),
+    status: document.getElementById('f_status').value,
+    notes: document.getElementById('f_notes').value.trim(),
+  };
+  if (!data.name || !data.surname) { showToast("Nom i cognoms obligatoris", 'error'); return; }
+  try {
+    if (editingId) {
+      const { error } = await supabase.from('teachers').update(data).eq('id', editingId);
+      if (error) throw error;
+      teachers = teachers.map(t => t.id === editingId ? { ...t, ...data } : t);
+      showToast("Professor actualitzat ✓");
+    } else {
+      const { data: res, error } = await supabase.from('teachers').insert(data).select().single();
+      if (error) throw error;
+      teachers.push(res);
+      showToast("Professor afegit ✓");
+    }
+    closeModal(); renderTeachers();
+  } catch(e) { showToast("Error: " + e.message, 'error'); }
+}
+
+async function deleteTeacher(id) {
+  const t = teachers.find(x => x.id === id);
+  confirmAction(`Eliminar el professor "${t?.name} ${t?.surname}"?`, async () => {
+    try {
+      await supabase.from('teachers').delete().eq('id', id);
+      teachers = teachers.filter(x => x.id !== id);
+      renderTeachers(); showToast("Professor eliminat");
+    } catch(e) { showToast("Error: " + e.message, 'error'); }
+  });
+}
+
+// ════════════════════════════════════════════════
+//  SCHEDULE
+// ════════════════════════════════════════════════
+const DAYS = [
+  { label: 'Dilluns',    order: 1 },
+  { label: 'Dimarts',   order: 2 },
+  { label: 'Dimecres',  order: 3 },
+  { label: 'Dijous',    order: 4 },
+  { label: 'Divendres', order: 5 },
+  { label: 'Dissabte',  order: 6 },
+];
+
+function renderSchedule() {
+  // Populate filters
+  const teacherSel = document.getElementById('scheduleTeacherFilter');
+  const studentSel = document.getElementById('scheduleStudentFilter');
+  teacherSel.innerHTML = `<option value="">Tots els professors</option>` +
+    teachers.map(t => `<option value="${t.id}">${t.name} ${t.surname}</option>`).join('');
+  studentSel.innerHTML = `<option value="">Tots els alumnes</option>` +
+    students.map(s => `<option value="${s.id}">${s.name} ${s.surname}</option>`).join('');
+
+  const tFilter = teacherSel.value;
+  const sFilter = studentSel.value;
+
+  const todayDayIdx = TODAY.getDay() === 0 ? 7 : TODAY.getDay();
+
+  let filtered = classes.filter(c => {
+    if (tFilter && c.teacher_id !== tFilter) return false;
+    if (sFilter && !c.student_ids?.includes(sFilter)) return false;
+    return true;
+  });
+
+  document.getElementById('weeklySchedule').innerHTML = DAYS.map(day => {
+    const dayCls = filtered.filter(c => c.day_order === day.order);
+    const isToday = day.order === todayDayIdx;
+    return `<div class="day-col">
+      <div class="day-header ${isToday ? 'today' : ''}">
+        <span>${day.label}</span>
+        <span style="opacity:.6;font-size:.75rem">${dayCls.length} classe${dayCls.length!==1?'s':''}</span>
+      </div>
+      <div class="day-classes">
+        ${dayCls.length ? dayCls.map(c => {
+          const teacher = teachers.find(t => t.id === c.teacher_id);
+          return `<div class="class-chip" onclick="openClassForm('${c.id}')">
+            <div class="class-chip-time">${c.start_time?.slice(0,5)} – ${c.end_time?.slice(0,5)}</div>
+            <div class="class-chip-subject">${c.subject||''}</div>
+            <div class="class-chip-info">${teacher ? teacher.name : '—'} · ${c.students_label||''}</div>
+          </div>`;
+        }).join('') : '<div style="color:var(--text-light);font-size:.8rem;padding:.5rem">Sense classes</div>'}
+        <button class="btn btn-ghost btn-sm" onclick="openClassForm(null, ${day.order})" style="margin-top:.25rem;width:100%">+ Afegir</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function openClassForm(id = null, dayOrder = null) {
+  editingId = id;
+  const c = id ? classes.find(x => x.id === id) : {};
+  const teacherOptions = teachers.map(t => `<option value="${t.id}" ${c.teacher_id===t.id?'selected':''}>${t.name} ${t.surname}</option>`).join('');
+  const dayOptions = DAYS.map(d => `<option value="${d.order}" ${(c.day_order||dayOrder)===d.order?'selected':''}>${d.label}</option>`).join('');
+
+  openModal(id ? 'Editar classe' : 'Nova classe', `
+    <div class="form-row">
+      <div class="form-group"><label>Dia *</label>
+        <select class="input" id="f_day">${dayOptions}</select>
+      </div>
+      <div class="form-group"><label>Assignatura</label>
+        <input class="input" id="f_subject" value="${c.subject||''}" />
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Hora inici *</label>
+        <input class="input" id="f_start" type="time" value="${c.start_time?.slice(0,5)||''}" />
+      </div>
+      <div class="form-group"><label>Hora fi *</label>
+        <input class="input" id="f_end" type="time" value="${c.end_time?.slice(0,5)||''}" />
+      </div>
+    </div>
+    <div class="form-group"><label>Professor</label>
+      <select class="input" id="f_teacher"><option value="">Sense professor</option>${teacherOptions}</select>
+    </div>
+    <div class="form-group"><label>Alumnes (escriu els noms)</label>
+      <input class="input" id="f_students_label" value="${c.students_label||''}" placeholder="ex: Marc, Laura, Grup A" />
+    </div>
+    <div class="form-group"><label>Aula</label>
+      <input class="input" id="f_room" value="${c.room||''}" placeholder="Aula 1" />
+    </div>
+    <div class="form-group"><label>Observacions</label>
+      <textarea class="input" id="f_notes">${c.notes||''}</textarea>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="saveClass()">💾 Guardar</button>
+      ${id ? `<button class="btn btn-danger" onclick="deleteClass('${id}')">Eliminar</button>` : ''}
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel·lar</button>
+    </div>
+  `);
+}
+
+async function saveClass() {
+  const data = {
+    day_order: parseInt(document.getElementById('f_day').value),
+    subject: document.getElementById('f_subject').value.trim(),
+    start_time: document.getElementById('f_start').value,
+    end_time: document.getElementById('f_end').value,
+    teacher_id: document.getElementById('f_teacher').value || null,
+    students_label: document.getElementById('f_students_label').value.trim(),
+    room: document.getElementById('f_room').value.trim(),
+    notes: document.getElementById('f_notes').value.trim(),
+  };
+  if (!data.start_time || !data.end_time) { showToast("Hora inici i fi obligatòries", 'error'); return; }
+  try {
+    if (editingId) {
+      const { error } = await supabase.from('classes').update(data).eq('id', editingId);
+      if (error) throw error;
+      classes = classes.map(c => c.id === editingId ? { ...c, ...data } : c);
+      showToast("Classe actualitzada ✓");
+    } else {
+      const { data: res, error } = await supabase.from('classes').insert(data).select().single();
+      if (error) throw error;
+      classes.push(res);
+      showToast("Classe afegida ✓");
+    }
+    closeModal(); renderSchedule();
+  } catch(e) { showToast("Error: " + e.message, 'error'); }
+}
+
+async function deleteClass(id) {
+  confirmAction("Eliminar aquesta classe?", async () => {
+    try {
+      await supabase.from('classes').delete().eq('id', id);
+      classes = classes.filter(c => c.id !== id);
+      closeModal(); renderSchedule(); showToast("Classe eliminada");
+    } catch(e) { showToast("Error: " + e.message, 'error'); }
+  });
+}
+
+// ════════════════════════════════════════════════
+//  PAYMENTS
+// ════════════════════════════════════════════════
+function paymentStatusBadge(s) {
+  if (s === 'pagat')  return 'badge-green';
+  if (s === 'vençut') return 'badge-red';
+  return 'badge-yellow';
+}
+
+function populatePaymentFilters() {
+  const stSel = document.getElementById('paymentStudentFilter');
+  stSel.innerHTML = `<option value="">Tots els alumnes</option>` +
+    students.map(s => `<option value="${s.id}">${s.name} ${s.surname}</option>`).join('');
+
+  const months = [...new Set(payments.map(p => p.payment_month).filter(Boolean))].sort().reverse();
+  const mSel = document.getElementById('paymentMonthFilter');
+  mSel.innerHTML = `<option value="">Tots els mesos</option>` +
+    months.map(m => `<option value="${m}">${m}</option>`).join('');
+}
+
+function renderPayments() {
+  populatePaymentFilters();
+  filterPayments();
+}
+
+function filterPayments() {
+  const stF = document.getElementById('paymentStudentFilter')?.value || '';
+  const stStatus = document.getElementById('paymentStatusFilter')?.value || '';
+  const mF = document.getElementById('paymentMonthFilter')?.value || '';
+
+  let list = payments.filter(p => {
+    if (stF && p.student_id !== stF) return false;
+    if (stStatus && p.status !== stStatus) return false;
+    if (mF && p.payment_month !== mF) return false;
+    return true;
+  });
+
+  const tbody = document.getElementById('paymentsTbody');
+  const empty = document.getElementById('paymentsEmpty');
+  const table = document.getElementById('paymentsTable');
+
+  if (!list.length) { table.style.display = 'none'; empty.style.display = ''; return; }
+  table.style.display = ''; empty.style.display = 'none';
+
+  tbody.innerHTML = list.map(p => {
+    const st = students.find(s => s.id === p.student_id);
+    return `<tr>
+      <td style="font-weight:600">${st ? st.name + ' ' + st.surname : '—'}</td>
+      <td>${p.payment_month || '—'}</td>
+      <td style="font-weight:600">${formatMoney(p.amount)}</td>
+      <td>${formatDate(p.due_date)}</td>
+      <td>${p.payment_method || '—'}</td>
+      <td><span class="badge ${paymentStatusBadge(p.status)}">${p.status}</span></td>
+      <td>
+        <div class="actions">
+          ${p.status !== 'pagat' ? `<button class="btn btn-green btn-sm" onclick="markPaid('${p.id}')" title="Marcar com a pagat">✓ Pagat</button>` : ''}
+          <button class="btn btn-icon btn-sm" onclick="openPaymentForm('${p.id}')">✏️</button>
+          <button class="btn btn-icon btn-sm" onclick="deletePayment('${p.id}')">🗑</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function openPaymentForm(id = null) {
+  editingId = id;
+  const p = id ? payments.find(x => x.id === id) : {};
+  const studentOptions = students.map(s =>
+    `<option value="${s.id}" ${p.student_id===s.id?'selected':''}>${s.name} ${s.surname}</option>`).join('');
+  const monthDefault = p.payment_month || currentMonth();
+
+  openModal(id ? 'Editar pagament' : 'Nou pagament', `
+    <div class="form-group"><label>Alumne *</label>
+      <select class="input" id="f_student"><option value="">Selecciona alumne</option>${studentOptions}</select>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Mes (YYYY-MM) *</label>
+        <input class="input" id="f_month" value="${monthDefault}" placeholder="2025-01" />
+      </div>
+      <div class="form-group"><label>Import (€) *</label>
+        <input class="input" id="f_amount" type="number" step="0.01" value="${p.amount||''}" />
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Data venciment</label>
+        <input class="input" id="f_due" type="date" value="${p.due_date||''}" />
+      </div>
+      <div class="form-group"><label>Data de pagament</label>
+        <input class="input" id="f_paid_date" type="date" value="${p.paid_date||''}" />
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Estat</label>
+        <select class="input" id="f_status">
+          ${['pendent','pagat','vençut'].map(o=>`<option value="${o}" ${p.status===o?'selected':''}>${o}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group"><label>Mètode de pagament</label>
+        <select class="input" id="f_method">
+          ${['','Efectiu','Transferència','Bizum','Targeta','Altre'].map(o=>`<option value="${o}" ${p.payment_method===o?'selected':''}>${o||'—'}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <div class="form-group"><label>Observacions</label>
+      <textarea class="input" id="f_notes">${p.notes||''}</textarea>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="savePayment()">💾 Guardar</button>
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel·lar</button>
+    </div>
+  `);
+}
+
+async function savePayment() {
+  const data = {
+    student_id: document.getElementById('f_student').value || null,
+    payment_month: document.getElementById('f_month').value.trim(),
+    amount: parseFloat(document.getElementById('f_amount').value) || 0,
+    due_date: document.getElementById('f_due').value || null,
+    paid_date: document.getElementById('f_paid_date').value || null,
+    status: document.getElementById('f_status').value,
+    payment_method: document.getElementById('f_method').value || null,
+    notes: document.getElementById('f_notes').value.trim(),
+  };
+  if (!data.student_id || !data.payment_month) { showToast("Alumne i mes obligatoris", 'error'); return; }
+  try {
+    if (editingId) {
+      const { error } = await supabase.from('payments').update(data).eq('id', editingId);
+      if (error) throw error;
+      payments = payments.map(p => p.id === editingId ? { ...p, ...data } : p);
+      showToast("Pagament actualitzat ✓");
+    } else {
+      const { data: res, error } = await supabase.from('payments').insert(data).select().single();
+      if (error) throw error;
+      payments.push(res);
+      showToast("Pagament afegit ✓");
+    }
+    closeModal(); renderPayments();
+  } catch(e) { showToast("Error: " + e.message, 'error'); }
+}
+
+async function markPaid(id) {
+  try {
+    const today = todayStr();
+    const { error } = await supabase.from('payments').update({ status: 'pagat', paid_date: today }).eq('id', id);
+    if (error) throw error;
+    payments = payments.map(p => p.id === id ? { ...p, status: 'pagat', paid_date: today } : p);
+    renderPayments(); showToast("Pagament marcat com a pagat ✓", 'success');
+  } catch(e) { showToast("Error: " + e.message, 'error'); }
+}
+
+async function deletePayment(id) {
+  confirmAction("Eliminar aquest pagament?", async () => {
+    try {
+      await supabase.from('payments').delete().eq('id', id);
+      payments = payments.filter(p => p.id !== id);
+      renderPayments(); showToast("Pagament eliminat");
+    } catch(e) { showToast("Error: " + e.message, 'error'); }
+  });
+}
+
+// ════════════════════════════════════════════════
+//  FINANCES
+// ════════════════════════════════════════════════
+function renderFinances() {
+  const month = currentMonth();
+  const monthIncome = payments
+    .filter(p => p.status === 'pagat' && (p.payment_month || '').startsWith(month))
+    .reduce((a, p) => a + parseFloat(p.amount || 0), 0);
+  const monthExp = expenses
+    .filter(e => e.date && e.date.startsWith(month))
+    .reduce((a, e) => a + parseFloat(e.amount || 0), 0);
+  const balance = monthIncome - monthExp;
+
+  document.getElementById('financeSummary').innerHTML = `
+    <div class="finance-card">
+      <div class="finance-card-label">Ingressos del mes</div>
+      <div class="finance-card-value income">${formatMoney(monthIncome)}</div>
+      <div style="color:var(--text-sec);font-size:.78rem;margin-top:.25rem">Pagaments cobrats</div>
+    </div>
+    <div class="finance-card">
+      <div class="finance-card-label">Gastos del mes</div>
+      <div class="finance-card-value expense">${formatMoney(monthExp)}</div>
+      <div style="color:var(--text-sec);font-size:.78rem;margin-top:.25rem">Despeses registrades</div>
+    </div>
+    <div class="finance-card">
+      <div class="finance-card-label">Balanç estimat</div>
+      <div class="finance-card-value ${balance >= 0 ? 'balance-pos' : 'balance-neg'}">${formatMoney(balance)}</div>
+      <div style="color:var(--text-sec);font-size:.78rem;margin-top:.25rem">${balance >= 0 ? '✓ Positiu' : '⚠ Negatiu'}</div>
+    </div>
+  `;
+
+  // Populate month filter
+  const allMonths = [...new Set(expenses.map(e => e.date?.slice(0,7)).filter(Boolean))].sort().reverse();
+  const mSel = document.getElementById('expenseMonthFilter');
+  mSel.innerHTML = `<option value="">Tots els mesos</option>` +
+    allMonths.map(m => `<option value="${m}">${m}</option>`).join('');
+
+  filterExpenses();
+}
+
+function filterExpenses() {
+  const mF = document.getElementById('expenseMonthFilter')?.value || '';
+  const cF = document.getElementById('expenseCategoryFilter')?.value || '';
+
+  let list = expenses.filter(e => {
+    if (mF && !e.date?.startsWith(mF)) return false;
+    if (cF && e.category !== cF) return false;
+    return true;
+  });
+
+  const tbody = document.getElementById('expensesTbody');
+  const empty = document.getElementById('expensesEmpty');
+  if (!list.length) { tbody.innerHTML = ''; empty.style.display = ''; return; }
+  empty.style.display = 'none';
+
+  tbody.innerHTML = list.map(e => `<tr>
+    <td style="font-weight:600">${e.concept || '—'}</td>
+    <td><span class="badge badge-blue">${e.category || '—'}</span></td>
+    <td style="font-weight:600;color:var(--red)">${formatMoney(e.amount)}</td>
+    <td>${formatDate(e.date)}</td>
+    <td>${e.payment_method || '—'}</td>
+    <td>
+      <div class="actions">
+        <button class="btn btn-icon btn-sm" onclick="openExpenseForm('${e.id}')">✏️</button>
+        <button class="btn btn-icon btn-sm" onclick="deleteExpense('${e.id}')">🗑</button>
+      </div>
+    </td>
+  </tr>`).join('');
+}
+
+function openExpenseForm(id = null) {
+  editingId = id;
+  const e = id ? expenses.find(x => x.id === id) : {};
+  const cats = ['Lloguer','Material','Professors','Subministraments','Publicitat','Manteniment','Altres'];
+  openModal(id ? 'Editar gasto' : 'Nou gasto', `
+    <div class="form-group"><label>Concepte *</label>
+      <input class="input" id="f_concept" value="${e.concept||''}" placeholder="Descripció del gasto" />
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Categoria</label>
+        <select class="input" id="f_category">
+          ${cats.map(c=>`<option value="${c}" ${e.category===c?'selected':''}>${c}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group"><label>Import (€) *</label>
+        <input class="input" id="f_amount" type="number" step="0.01" value="${e.amount||''}" />
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Data *</label>
+        <input class="input" id="f_date" type="date" value="${e.date||todayStr()}" />
+      </div>
+      <div class="form-group"><label>Mètode de pagament</label>
+        <select class="input" id="f_method">
+          ${['','Efectiu','Transferència','Bizum','Targeta','Altre'].map(o=>`<option value="${o}" ${e.payment_method===o?'selected':''}>${o||'—'}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <div class="form-group"><label>Observacions</label>
+      <textarea class="input" id="f_notes">${e.notes||''}</textarea>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="saveExpense()">💾 Guardar</button>
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel·lar</button>
+    </div>
+  `);
+}
+
+async function saveExpense() {
+  const data = {
+    concept: document.getElementById('f_concept').value.trim(),
+    category: document.getElementById('f_category').value,
+    amount: parseFloat(document.getElementById('f_amount').value) || 0,
+    date: document.getElementById('f_date').value,
+    payment_method: document.getElementById('f_method').value || null,
+    notes: document.getElementById('f_notes').value.trim(),
+  };
+  if (!data.concept || !data.date) { showToast("Concepte i data obligatoris", 'error'); return; }
+  try {
+    if (editingId) {
+      const { error } = await supabase.from('expenses').update(data).eq('id', editingId);
+      if (error) throw error;
+      expenses = expenses.map(e => e.id === editingId ? { ...e, ...data } : e);
+      showToast("Gasto actualitzat ✓");
+    } else {
+      const { data: res, error } = await supabase.from('expenses').insert(data).select().single();
+      if (error) throw error;
+      expenses.push(res);
+      showToast("Gasto afegit ✓");
+    }
+    closeModal(); renderFinances();
+  } catch(e) { showToast("Error: " + e.message, 'error'); }
+}
+
+async function deleteExpense(id) {
+  confirmAction("Eliminar aquest gasto?", async () => {
+    try {
+      await supabase.from('expenses').delete().eq('id', id);
+      expenses = expenses.filter(e => e.id !== id);
+      renderFinances(); showToast("Gasto eliminat");
+    } catch(e) { showToast("Error: " + e.message, 'error'); }
+  });
+}
+
+// ════════════════════════════════════════════════
+//  TASKS
+// ════════════════════════════════════════════════
+function renderTasks() { filterTasks(); }
+
+function filterTasks() {
+  const statusF   = document.getElementById('taskStatusFilter')?.value || '';
+  const priorityF = document.getElementById('taskPriorityFilter')?.value || '';
+
+  let list = tasks.filter(t => {
+    if (statusF && t.status !== statusF) return false;
+    if (priorityF && t.priority !== priorityF) return false;
+    return true;
+  });
+
+  const container = document.getElementById('tasksList');
+  const empty = document.getElementById('tasksEmpty');
+
+  if (!list.length) { container.innerHTML = ''; empty.style.display = ''; return; }
+  empty.style.display = 'none';
+
+  container.innerHTML = list.map(t => `
+    <div class="task-card ${t.status}" id="task-${t.id}">
+      <div class="priority-dot priority-${t.priority}"></div>
+      <div class="task-check" onclick="toggleTask('${t.id}', '${t.status}')">
+        ${t.status === 'completada' ? '✓' : ''}
+      </div>
+      <div class="task-body">
+        <div class="task-title">${t.title}</div>
+        ${t.description ? `<div class="task-desc">${t.description}</div>` : ''}
+        <div class="task-meta">
+          <span class="badge ${t.priority==='alta'?'badge-red':t.priority==='mitja'?'badge-yellow':'badge-green'}">${t.priority}</span>
+          ${t.category ? `<span class="badge badge-gray">${t.category}</span>` : ''}
+          ${t.date ? `<span style="color:var(--text-sec);font-size:.78rem">${formatDate(t.date)}</span>` : ''}
+        </div>
+      </div>
+      <div class="task-actions">
+        <button class="btn btn-icon btn-sm" onclick="openTaskForm('${t.id}')">✏️</button>
+        <button class="btn btn-icon btn-sm" onclick="deleteTask('${t.id}')">🗑</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function quickAddTask() {
+  const title = document.getElementById('quickTaskTitle').value.trim();
+  if (!title) { showToast("Escriu el títol de la tasca", 'warning'); return; }
+  const data = {
+    title,
+    priority: document.getElementById('quickTaskPriority').value,
+    category: document.getElementById('quickTaskCategory').value || null,
+    status: 'pendent',
+    date: todayStr(),
+  };
+  try {
+    const { data: res, error } = await supabase.from('tasks').insert(data).select().single();
+    if (error) throw error;
+    tasks.unshift(res);
+    document.getElementById('quickTaskTitle').value = '';
+    renderTasks(); showToast("Tasca afegida ✓");
+  } catch(e) { showToast("Error: " + e.message, 'error'); }
+}
+
+function openTaskForm(id = null) {
+  editingId = id;
+  const t = id ? tasks.find(x => x.id === id) : {};
+  openModal(id ? 'Editar tasca' : 'Nova tasca detallada', `
+    <div class="form-group"><label>Títol *</label>
+      <input class="input" id="f_title" value="${t.title||''}" />
+    </div>
+    <div class="form-group"><label>Descripció</label>
+      <textarea class="input" id="f_description">${t.description||''}</textarea>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Prioritat</label>
+        <select class="input" id="f_priority">
+          ${['baixa','mitja','alta'].map(o=>`<option value="${o}" ${t.priority===o?'selected':''}>${o}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group"><label>Estat</label>
+        <select class="input" id="f_status">
+          <option value="pendent" ${t.status==='pendent'||!t.status?'selected':''}>Pendent</option>
+          <option value="completada" ${t.status==='completada'?'selected':''}>Completada</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Data</label>
+        <input class="input" id="f_date" type="date" value="${t.date||todayStr()}" />
+      </div>
+      <div class="form-group"><label>Categoria</label>
+        <select class="input" id="f_category">
+          ${['','pagaments','alumnes','professors','organització','trucada','material','altre'].map(o=>`<option value="${o}" ${t.category===o?'selected':''}>${o||'Cap'}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" onclick="saveTask()">💾 Guardar</button>
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel·lar</button>
+    </div>
+  `);
+}
+
+async function saveTask() {
+  const data = {
+    title: document.getElementById('f_title').value.trim(),
+    description: document.getElementById('f_description').value.trim(),
+    priority: document.getElementById('f_priority').value,
+    status: document.getElementById('f_status').value,
+    date: document.getElementById('f_date').value,
+    category: document.getElementById('f_category').value || null,
+  };
+  if (!data.title) { showToast("Títol obligatori", 'error'); return; }
+  try {
+    if (editingId) {
+      const { error } = await supabase.from('tasks').update(data).eq('id', editingId);
+      if (error) throw error;
+      tasks = tasks.map(t => t.id === editingId ? { ...t, ...data } : t);
+      showToast("Tasca actualitzada ✓");
+    } else {
+      const { data: res, error } = await supabase.from('tasks').insert(data).select().single();
+      if (error) throw error;
+      tasks.unshift(res);
+      showToast("Tasca afegida ✓");
+    }
+    closeModal(); renderTasks();
+  } catch(e) { showToast("Error: " + e.message, 'error'); }
+}
+
+async function toggleTask(id, currentStatus) {
+  const newStatus = currentStatus === 'completada' ? 'pendent' : 'completada';
+  try {
+    const { error } = await supabase.from('tasks').update({ status: newStatus }).eq('id', id);
+    if (error) throw error;
+    tasks = tasks.map(t => t.id === id ? { ...t, status: newStatus } : t);
+    renderTasks();
+    if (newStatus === 'completada') showToast("Tasca completada! ✓");
+  } catch(e) { showToast("Error: " + e.message, 'error'); }
+}
+
+async function deleteTask(id) {
+  confirmAction("Eliminar aquesta tasca?", async () => {
+    try {
+      await supabase.from('tasks').delete().eq('id', id);
+      tasks = tasks.filter(t => t.id !== id);
+      renderTasks(); showToast("Tasca eliminada");
+    } catch(e) { showToast("Error: " + e.message, 'error'); }
+  });
+}
+
+// ════════════════════════════════════════════════
+//  INIT
+// ════════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', () => {
+  updateClock();
+  setInterval(updateClock, 60000);
+  loadAll();
+});
