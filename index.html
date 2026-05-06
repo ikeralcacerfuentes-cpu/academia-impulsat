@@ -12,14 +12,11 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Impulsa't" />
-  <meta name="application-name" content="Impulsa't" />
   <meta name="description" content="Gestió interna de l'Acadèmia Impulsa't" />
 
   <!-- Icons -->
   <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png" />
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
-  <link rel="apple-touch-icon" sizes="152x152" href="/icons/icon-152x152.png" />
-  <link rel="apple-touch-icon" sizes="192x192" href="/icons/icon-192x192.png" />
 
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -33,7 +30,7 @@
 <aside class="sidebar" id="sidebar">
   <div class="sidebar-header">
     <div class="logo">
-      <div class="logo-icon"><img src="/icons/icon-72x72.png" alt="Impulsa't" style="width:40px;height:40px;object-fit:contain;border-radius:8px;" /></div>
+      <div class="logo-icon">🚀</div>
       <div class="logo-text">
         <span class="logo-name">Impulsa't</span>
         <span class="logo-sub">Acadèmia</span>
@@ -43,31 +40,31 @@
 
   <nav class="sidebar-nav">
     <a href="#" class="nav-item active" data-section="dashboard">
-      <span class="nav-icon">◈</span>
+      <span class="nav-icon">📊</span>
       <span>Dashboard</span>
     </a>
     <a href="#" class="nav-item" data-section="students">
-      <span class="nav-icon">◉</span>
+      <span class="nav-icon">👩‍🎓</span>
       <span>Alumnes</span>
     </a>
     <a href="#" class="nav-item" data-section="teachers">
-      <span class="nav-icon">◎</span>
+      <span class="nav-icon">👨‍🏫</span>
       <span>Professors</span>
     </a>
     <a href="#" class="nav-item" data-section="schedule">
-      <span class="nav-icon">◷</span>
+      <span class="nav-icon">🗓️</span>
       <span>Horaris</span>
     </a>
     <a href="#" class="nav-item" data-section="payments">
-      <span class="nav-icon">◈</span>
+      <span class="nav-icon">💳</span>
       <span>Pagaments</span>
     </a>
     <a href="#" class="nav-item" data-section="finances">
-      <span class="nav-icon">◐</span>
+      <span class="nav-icon">💰</span>
       <span>Finances</span>
     </a>
     <a href="#" class="nav-item" data-section="tasks">
-      <span class="nav-icon">◻</span>
+      <span class="nav-icon">✅</span>
       <span>Tasques</span>
     </a>
   </nav>
@@ -404,17 +401,16 @@
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/service-worker.js')
-      .then(reg => console.log('[PWA] Service Worker registrat:', reg.scope))
-      .catch(err => console.warn('[PWA] Error registrant SW:', err));
+      .then(reg => console.log('[PWA] SW registrat:', reg.scope))
+      .catch(err => console.warn('[PWA] Error SW:', err));
   });
 }
 
-// Detecta paràmetre ?section= per als shortcuts de la PWA
 const urlParams = new URLSearchParams(window.location.search);
 const sectionParam = urlParams.get('section');
 if (sectionParam) {
   window.addEventListener('DOMContentLoaded', () => {
-    setTimeout(() => navigate(sectionParam), 100);
+    setTimeout(() => navigate(sectionParam), 200);
   });
 }
 </script>

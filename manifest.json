@@ -26,21 +26,18 @@
     {
       "name": "Alumnes",
       "short_name": "Alumnes",
-      "description": "Gestionar alumnes",
       "url": "/?section=students",
       "icons": [{ "src": "/icons/icon-96x96.png", "sizes": "96x96" }]
     },
     {
       "name": "Pagaments",
       "short_name": "Pagaments",
-      "description": "Veure pagaments",
       "url": "/?section=payments",
       "icons": [{ "src": "/icons/icon-96x96.png", "sizes": "96x96" }]
     },
     {
       "name": "Tasques",
       "short_name": "Tasques",
-      "description": "Llista de tasques",
       "url": "/?section=tasks",
       "icons": [{ "src": "/icons/icon-96x96.png", "sizes": "96x96" }]
     }
