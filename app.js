@@ -1,6 +1,5 @@
 // ============================================================
 //  app.js — Acadèmia Impulsa't
-//  JavaScript principal — lògica de l'app (versió corregida)
 // ============================================================
 
 // ── Supabase init ──────────────────────────────────────────
@@ -84,16 +83,6 @@ function confirmAction(msg, cb) {
   });
 }
 
-// Cerrar confirmOverlay clicando fuera
-document.addEventListener('DOMContentLoaded', () => {
-  const confirmOverlay = document.getElementById('confirmOverlay');
-  if (confirmOverlay) {
-    confirmOverlay.addEventListener('click', (e) => {
-      if (e.target === confirmOverlay) confirmOverlay.classList.remove('active');
-    });
-  }
-});
-
 // ── Modal ──────────────────────────────────────────────────
 function openModal(title, html) {
   document.getElementById('modalTitle').textContent = title;
@@ -107,32 +96,24 @@ function closeModal() {
 }
 
 // ── Navigation ─────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', () => {
-  document.querySelectorAll('.nav-item').forEach(item => {
-    item.addEventListener('click', e => {
-      e.preventDefault();
-      const sec = item.dataset.section;
-      navigate(sec);
-      document.getElementById('sidebar').classList.remove('open');
-    });
-  });
-});
-
 function navigate(sec) {
   document.querySelectorAll('.nav-item').forEach(i => i.classList.toggle('active', i.dataset.section === sec));
   document.querySelectorAll('.section').forEach(s => s.classList.toggle('active', s.id === `section-${sec}`));
   const titles = {
     dashboard: 'Dashboard',
-    students: 'Alumnes',
-    teachers: 'Professors',
-    schedule: 'Horaris',
-    payments: 'Pagaments',
-    finances: 'Finances',
-    tasks: 'Tasques'
+    students:  'Alumnes',
+    teachers:  'Professors',
+    schedule:  'Horaris',
+    payments:  'Pagaments',
+    finances:  'Finances',
+    tasks:     'Tasques'
   };
-  document.getElementById('pageTitle').textContent = titles[sec] || sec;
+  const pt = document.getElementById('pageTitle');
+  if (pt) pt.textContent = titles[sec] || sec;
 
-  // Només renderitzar si les dades ja estan carregades
+  // Tanca el sidebar en mòbil
+  document.getElementById('sidebar').classList.remove('open');
+
   if (!dataLoaded) return;
 
   if (sec === 'dashboard')  loadDashboard();
@@ -202,15 +183,24 @@ async function updatePaymentStatuses() {
   const today = todayStr();
   const toUpdate = payments.filter(p => p.status === 'pendent' && p.due_date && p.due_date < today);
   if (!toUpdate.length) return;
-
-  // Una sola query en lloc de N queries
   const ids = toUpdate.map(p => p.id);
   try {
     await supabase.from('payments').update({ status: 'vençut' }).in('id', ids);
     toUpdate.forEach(p => { p.status = 'vençut'; });
   } catch(e) {
-    console.warn('Error actualitzant estats de pagaments:', e);
+    console.warn('Error actualitzant estats:', e);
   }
+}
+
+// ── XSS protection ─────────────────────────────────────────
+function esc(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 // ── DASHBOARD ─────────────────────────────────────────────
@@ -240,7 +230,6 @@ function loadDashboard() {
   });
   soon.sort((a, b) => a.diff - b.diff);
 
-  // Stats
   const statsGrid = document.getElementById('statsGrid');
   if (statsGrid) {
     statsGrid.innerHTML = `
@@ -272,7 +261,6 @@ function loadDashboard() {
     `;
   }
 
-  // Alerts
   const alerts = [];
   if (overduePayments.length)
     alerts.push({ type: 'danger', msg: `⚠️ ${overduePayments.length} pagament(s) vençut(s) sense cobrar.` });
@@ -284,12 +272,9 @@ function loadDashboard() {
 
   const alertsBar = document.getElementById('alertsBar');
   if (alertsBar) {
-    alertsBar.innerHTML = alerts.map(a =>
-      `<div class="alert alert-${a.type}">${a.msg}</div>`
-    ).join('') || '';
+    alertsBar.innerHTML = alerts.map(a => `<div class="alert alert-${a.type}">${a.msg}</div>`).join('');
   }
 
-  // Renewal list
   const renewalCount = document.getElementById('renewalCount');
   const renewalList = document.getElementById('renewalList');
   if (renewalCount) renewalCount.textContent = soon.length;
@@ -302,12 +287,10 @@ function loadDashboard() {
               <div class="item-row-sub">${r.diff === 0 ? 'Avui' : `En ${r.diff} dia${r.diff > 1 ? 's' : ''}`}</div>
             </div>
             <div class="badge badge-yellow">${formatMoney(r.student.monthly_price)}</div>
-          </div>
-        `).join('')
+          </div>`).join('')
       : '<div class="item-row" style="padding:1rem;color:var(--text-sec)">Cap renovació propera</div>';
   }
 
-  // Pending list
   const pendingCount = document.getElementById('pendingCount');
   const pendingList = document.getElementById('pendingList');
   if (pendingCount) pendingCount.textContent = pendingPayments.length + overduePayments.length;
@@ -327,7 +310,6 @@ function loadDashboard() {
       : '<div class="item-row" style="padding:1rem;color:var(--text-sec)">Cap pagament pendent 🎉</div>';
   }
 
-  // Today's classes
   const todayDayIdx = TODAY.getDay() === 0 ? 7 : TODAY.getDay();
   const todayClassesList = classes.filter(c => c.day_order === todayDayIdx);
   const todayClassesEl = document.getElementById('todayClasses');
@@ -347,7 +329,6 @@ function loadDashboard() {
       : '<div class="item-row" style="padding:1rem;color:var(--text-sec)">No hi ha classes avui</div>';
   }
 
-  // Today tasks (pending, high priority first)
   const pendingTasks = tasks
     .filter(t => t.status === 'pendent')
     .sort((a, b) => {
@@ -365,21 +346,9 @@ function loadDashboard() {
               <div class="item-row-sub">${t.category || ''}</div>
             </div>
             <span class="badge ${t.priority === 'alta' ? 'badge-red' : t.priority === 'mitja' ? 'badge-yellow' : 'badge-green'}">${t.priority}</span>
-          </div>
-        `).join('')
+          </div>`).join('')
       : '<div class="item-row" style="padding:1rem;color:var(--text-sec)">Totes les tasques fetes! ✅</div>';
   }
-}
-
-// ── XSS protection helper ──────────────────────────────────
-function esc(str) {
-  if (!str) return '';
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
 }
 
 // ════════════════════════════════════════════════
@@ -671,17 +640,18 @@ function renderSchedule() {
   const teacherSel = document.getElementById('scheduleTeacherFilter');
   const studentSel = document.getElementById('scheduleStudentFilter');
 
-  // Guardar valors actuals abans de re-popular
   const currentTeacher = teacherSel?.value || '';
   const currentStudent = studentSel?.value || '';
 
   if (teacherSel) {
     teacherSel.innerHTML = `<option value="">Tots els professors</option>` +
       teachers.map(t => `<option value="${t.id}" ${currentTeacher === t.id ? 'selected' : ''}>${esc(t.name)} ${esc(t.surname)}</option>`).join('');
+    teacherSel.value = currentTeacher;
   }
   if (studentSel) {
     studentSel.innerHTML = `<option value="">Tots els alumnes</option>` +
       students.map(s => `<option value="${s.id}" ${currentStudent === s.id ? 'selected' : ''}>${esc(s.name)} ${esc(s.surname)}</option>`).join('');
+    studentSel.value = currentStudent;
   }
 
   const tFilter = teacherSel?.value || '';
@@ -832,6 +802,7 @@ function populatePaymentFilters() {
     const current = stSel.value;
     stSel.innerHTML = `<option value="">Tots els alumnes</option>` +
       students.map(s => `<option value="${s.id}" ${current === s.id ? 'selected' : ''}>${esc(s.name)} ${esc(s.surname)}</option>`).join('');
+    stSel.value = current;
   }
 
   const months = [...new Set(payments.map(p => p.payment_month).filter(Boolean))].sort().reverse();
@@ -840,6 +811,7 @@ function populatePaymentFilters() {
     const current = mSel.value;
     mSel.innerHTML = `<option value="">Tots els mesos</option>` +
       months.map(m => `<option value="${m}" ${current === m ? 'selected' : ''}>${m}</option>`).join('');
+    mSel.value = current;
   }
 }
 
@@ -849,9 +821,9 @@ function renderPayments() {
 }
 
 function filterPayments() {
-  const stF     = document.getElementById('paymentStudentFilter')?.value || '';
+  const stF      = document.getElementById('paymentStudentFilter')?.value || '';
   const stStatus = document.getElementById('paymentStatusFilter')?.value || '';
-  const mF      = document.getElementById('paymentMonthFilter')?.value || '';
+  const mF       = document.getElementById('paymentMonthFilter')?.value || '';
 
   const list = payments.filter(p => {
     if (stF && p.student_id !== stF) return false;
@@ -957,7 +929,6 @@ async function savePayment() {
     notes:          document.getElementById('f_notes').value.trim(),
   };
   if (!data.student_id || !data.payment_month) { showToast("Alumne i mes obligatoris", 'error'); return; }
-  // Validar format mes
   if (!/^\d{4}-\d{2}$/.test(data.payment_month)) { showToast("Format del mes incorrecte (YYYY-MM)", 'error'); return; }
   try {
     if (editingId) {
@@ -1033,13 +1004,13 @@ function renderFinances() {
     `;
   }
 
-  // Populate month filter
   const allMonths = [...new Set(expenses.map(e => e.date?.slice(0,7)).filter(Boolean))].sort().reverse();
   const mSel = document.getElementById('expenseMonthFilter');
   if (mSel) {
     const current = mSel.value;
     mSel.innerHTML = `<option value="">Tots els mesos</option>` +
       allMonths.map(m => `<option value="${m}" ${current === m ? 'selected' : ''}>${m}</option>`).join('');
+    mSel.value = current;
   }
 
   filterExpenses();
@@ -1323,6 +1294,22 @@ async function deleteTask(id) {
 //  INIT
 // ════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', () => {
+  // Nav listeners
+  document.querySelectorAll('.nav-item').forEach(item => {
+    item.addEventListener('click', e => {
+      e.preventDefault();
+      navigate(item.dataset.section);
+    });
+  });
+
+  // Confirm overlay click outside
+  const confirmOverlay = document.getElementById('confirmOverlay');
+  if (confirmOverlay) {
+    confirmOverlay.addEventListener('click', e => {
+      if (e.target === confirmOverlay) confirmOverlay.classList.remove('active');
+    });
+  }
+
   updateClock();
   setInterval(updateClock, 60000);
   loadAll();
