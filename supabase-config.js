@@ -8,8 +8,8 @@
 // 3. Copia "Project URL" y pégala en SUPABASE_URL
 // 4. Copia "anon public" (Project API keys) y pégala en SUPABASE_ANON_KEY
 
-const SUPABASE_URL  = "AQUI_TU_SUPABASE_URL";   // ej: https://xyzabcdef.supabase.co
-const SUPABASE_ANON_KEY = "AQUI_TU_SUPABASE_ANON_KEY"; // ej: eyJhbGciOiJIUzI1NiIsInR5c...
+const SUPABASE_URL  = "https://kuijavargxwjxjldqcpx.supabase.co";   // ej: https://xyzabcdef.supabase.co
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt1aWphdmFyZ3h3anhqbGRxY3B4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwOTQyODIsImV4cCI6MjA5MzY3MDI4Mn0.A-E_YHosbVRdvTLU-Dk0nvmMCd6FK_4rrKotIk-a3No"; // ej: eyJhbGciOiJIUzI1NiIsInR5c...
 
 // ⚠️  IMPORTANTE DE SEGURIDAD:
 //  • Esta app NO tiene login. Cualquiera que tenga la URL puede usarla.
