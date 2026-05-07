@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
 
@@ -233,17 +233,20 @@
   </section>
 </main>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="supabase-config.js"></script>
-<script src="app.js"></script>
+<!-- FIX: usar unpkg en lugar de jsdelivr, que es el CDN oficial de Supabase -->
+<script src="https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="/supabase-config.js"></script>
+<script src="/app.js"></script>
 <script>
-if('serviceWorker' in navigator){
-  window.addEventListener('load',()=>{
-    navigator.serviceWorker.register('/service-worker.js').catch(()=>{});
-  });
-}
-const sp=new URLSearchParams(window.location.search).get('section');
-if(sp) window.addEventListener('DOMContentLoaded',()=>setTimeout(()=>navigate(sp),200));
+  // Registra service worker
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/service-worker.js').catch(err => console.warn('SW error:', err));
+    });
+  }
+  // Navegació per URL param
+  const sp = new URLSearchParams(window.location.search).get('section');
+  if (sp) window.addEventListener('DOMContentLoaded', () => setTimeout(() => navigate(sp), 300));
 </script>
 </body>
 </html>

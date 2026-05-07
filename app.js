@@ -1,4 +1,4 @@
-// app.js — Acadèmia Impulsa't
+// app.js — Acadèmia Impulsa't (fixed)
 
 let supabase   = null;
 let students   = [];
@@ -18,7 +18,7 @@ const DAYS = [
   {label:'Dijous',order:4},{label:'Divendres',order:5},{label:'Dissabte',order:6}
 ];
 
-function todayStr(){return `${TODAY.getFullYear()}-${String(TODAY.getMonth()+1).padStart(2,'0')}-${String(TODAY.getDate()).padStart(2,'0')}`;}
+function todayStr(){return`${TODAY.getFullYear()}-${String(TODAY.getMonth()+1).padStart(2,'0')}-${String(TODAY.getDate()).padStart(2,'0')}`;}
 function formatDate(d){if(!d)return'—';const dt=new Date(d+'T00:00:00');return`${dt.getDate()} ${MONTHS_CA[dt.getMonth()]} ${dt.getFullYear()}`;}
 function formatMoney(n){return parseFloat(n||0).toFixed(2).replace('.',',')+'€';}
 function currentMonth(){return`${TODAY.getFullYear()}-${String(TODAY.getMonth()+1).padStart(2,'0')}`;}
@@ -51,8 +51,6 @@ function openModal(title,html){
 }
 function closeModal(){document.getElementById('modalOverlay').classList.remove('active');editingId=null;}
 
-// ── NAVEGACIÓ — FIX PRINCIPAL ──────────────────────────────
-// Ja NO comprova dataLoaded per bloquejar. Sempre navega.
 function navigate(sec){
   document.querySelectorAll('.nav-item').forEach(i=>i.classList.toggle('active',i.dataset.section===sec));
   document.querySelectorAll('.section').forEach(s=>s.classList.toggle('active',s.id===`section-${sec}`));
@@ -60,9 +58,8 @@ function navigate(sec){
   const pt=document.getElementById('pageTitle');if(pt)pt.textContent=titles[sec]||sec;
   document.getElementById('sidebar').classList.remove('open');
 
-  // Si les dades no han carregat, mostra missatge però deixa navegar
   if(!dataLoaded){
-    showSectionLoading(sec);
+    showToast('Carregant dades...','warning');
     return;
   }
 
@@ -75,23 +72,26 @@ function navigate(sec){
   if(sec==='tasks')renderTasks();
 }
 
-function showSectionLoading(sec){
-  // Mostra estat de càrrega per la secció activa sense bloquejar la UI
-  const msgs = {
-    students: 'studentsTbody',
-    teachers: 'teachersTbody',
-    payments: 'paymentsTbody',
-  };
-  // No cal fer res especial, simplement no renderitzem dades buides
-}
-
 async function loadAll(){
   if(!supabase){
-    showToast('Configura les credencials de Supabase!','error');
-    showLoadError('Supabase no configurat correctament.');
+    showToast('Supabase no inicialitzat!','error');
+    showLoadError('No s\'ha pogut connectar a Supabase. Comprova les credencials a supabase-config.js i que el fitxer es carregui correctament.');
     return;
   }
+
+  // Mostra animació de càrrega
+  const g=document.getElementById('statsGrid');
+  if(g)g.innerHTML=`
+    <div class="stat-card loading"></div><div class="stat-card loading"></div><div class="stat-card loading"></div>
+    <div class="stat-card loading"></div><div class="stat-card loading"></div><div class="stat-card loading"></div>`;
+
   try{
+    // Test de connexió primer
+    const testResult = await supabase.from('students').select('id').limit(1);
+    if(testResult.error){
+      throw new Error('Error de connexió: ' + testResult.error.message + '. Codi: ' + testResult.error.code);
+    }
+
     const [s,t,c,p,e,k]=await Promise.all([
       supabase.from('students').select('*').order('name'),
       supabase.from('teachers').select('*').order('name'),
@@ -101,11 +101,13 @@ async function loadAll(){
       supabase.from('tasks').select('*').order('created_at',{ascending:false}),
     ]);
 
-    // Comprova errors individuals
-    const errors = [s,t,c,p,e,k].map(r=>r.error).filter(Boolean);
-    if(errors.length){
-      console.error('Errors Supabase:', errors);
-      throw new Error(errors[0].message || 'Error carregant dades');
+    // Comprova errors individuals i reporta el primer
+    const results = [s,t,c,p,e,k];
+    const tableNames = ['students','teachers','classes','payments','expenses','tasks'];
+    for(let i=0;i<results.length;i++){
+      if(results[i].error){
+        throw new Error(`Error a la taula "${tableNames[i]}": ${results[i].error.message}`);
+      }
     }
 
     students=s.data||[];teachers=t.data||[];classes=c.data||[];
@@ -114,20 +116,23 @@ async function loadAll(){
 
     await updatePaymentStatuses();
     loadDashboard();
-    showToast('Dades carregades ✓','success');
+    showToast(`Dades carregades: ${students.length} alumnes, ${teachers.length} professors ✓`,'success');
   }catch(err){
     console.error('loadAll error:', err);
-    showToast('Error: '+(err.message||err),'error');
-    showLoadError('No s\'han pogut carregar les dades. Comprova la connexió i les credencials de Supabase.');
+    const msg = err.message || String(err);
+    showToast('Error: '+msg,'error');
+    showLoadError(msg);
   }
 }
 
 function showLoadError(msg){
   const g=document.getElementById('statsGrid');
   if(g)g.innerHTML=`<div class="stat-card" style="grid-column:1/-1;text-align:center;padding:2rem;color:var(--red)">
-    ⚠️ ${msg||'Error carregant dades.'}<br>
-    <small style="color:var(--text-sec);margin-top:.5rem;display:block">Obre la consola (F12) per veure el detall de l'error.</small>
-    <button class="btn btn-primary" style="margin-top:1rem" onclick="loadAll()">🔄 Reintenta</button>
+    <div style="font-size:2rem;margin-bottom:.75rem">⚠️</div>
+    <strong>Error de connexió</strong><br>
+    <span style="color:var(--text-sec);font-size:.85rem;display:block;margin:.5rem 0">${esc(msg)}</span>
+    <small style="color:var(--text-light);display:block;margin-bottom:1rem">Obre la consola del navegador (F12 → Console) per veure l'error complet.</small>
+    <button class="btn btn-primary" onclick="loadAll()">🔄 Reintenta</button>
   </div>`;
 }
 
@@ -381,19 +386,57 @@ async function deleteTask(id){
 // ── INIT ───────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', function() {
 
-  // Inicialitza Supabase
+  // ── FIX PRINCIPAL: detecta correctament el global de Supabase ──
+  // El bundle UMD d'unpkg exposa "supabase" com a variable global,
+  // no "window.supabase". Provem totes les variants possibles.
   try {
-    if(typeof window.supabase !== 'undefined' && typeof SUPABASE_URL !== 'undefined' && typeof SUPABASE_ANON_KEY !== 'undefined'){
-      supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-      console.log('✅ Supabase inicialitzat correctament');
+    let supabaseLib = null;
+
+    if (typeof window.supabase !== 'undefined' && typeof window.supabase.createClient === 'function') {
+      supabaseLib = window.supabase;
+    } else if (typeof supabaseJs !== 'undefined' && typeof supabaseJs.createClient === 'function') {
+      supabaseLib = supabaseJs;
     } else {
-      console.error('❌ window.supabase, SUPABASE_URL o SUPABASE_ANON_KEY no estan disponibles');
+      // Cerca qualsevol global que tingui createClient
+      for (const key of Object.keys(window)) {
+        if (window[key] && typeof window[key].createClient === 'function') {
+          supabaseLib = window[key];
+          console.log('Supabase trobat a window.' + key);
+          break;
+        }
+      }
     }
+
+    if (!supabaseLib) {
+      throw new Error('No s\'ha trobat la llibreria de Supabase. El CDN pot estar bloquejat.');
+    }
+
+    if (typeof SUPABASE_URL === 'undefined' || !SUPABASE_URL || SUPABASE_URL.includes('xyzabcdef')) {
+      throw new Error('SUPABASE_URL no configurat. Edita supabase-config.js amb les teves credencials.');
+    }
+
+    if (typeof SUPABASE_ANON_KEY === 'undefined' || !SUPABASE_ANON_KEY) {
+      throw new Error('SUPABASE_ANON_KEY no configurat. Edita supabase-config.js amb les teves credencials.');
+    }
+
+    supabase = supabaseLib.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    console.log('✅ Supabase inicialitzat correctament');
+
   } catch(e) {
-    console.error('❌ Error inicialitzant Supabase:', e);
+    console.error('❌ Error inicialitzant Supabase:', e.message);
+    showToast('Error: ' + e.message, 'error');
+    showLoadError(e.message);
+    // Atura aquí, no intentis carregar dades
+    initUI();
+    return;
   }
 
-  // Navegació lateral — registra events una sola vegada
+  initUI();
+  loadAll();
+});
+
+function initUI() {
+  // Navegació lateral
   document.querySelectorAll('.nav-item').forEach(function(item) {
     item.addEventListener('click', function(e) {
       e.preventDefault();
@@ -411,13 +454,10 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 
   // Tanca confirm clicant fora
-  var co = document.getElementById('confirmOverlay');
+  const co = document.getElementById('confirmOverlay');
   if(co) co.addEventListener('click', function(e){ if(e.target===co) co.classList.remove('active'); });
 
   // Rellotge
   updateClock();
   setInterval(updateClock, 60000);
-
-  // Carrega totes les dades
-  loadAll();
-});
+}

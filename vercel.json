@@ -1,6 +1,12 @@
 {
   "rewrites": [
-    { "source": "/(.*)", "destination": "/index.html" }
+    { "source": "/app.js",            "destination": "/app.js" },
+    { "source": "/styles.css",        "destination": "/styles.css" },
+    { "source": "/supabase-config.js","destination": "/supabase-config.js" },
+    { "source": "/service-worker.js", "destination": "/service-worker.js" },
+    { "source": "/manifest.json",     "destination": "/manifest.json" },
+    { "source": "/icons/(.*)",        "destination": "/icons/$1" },
+    { "source": "/(.*)",              "destination": "/index.html" }
   ],
   "headers": [
     {
@@ -32,7 +38,7 @@
     {
       "source": "/supabase-config.js",
       "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=86400" }
+        { "key": "Cache-Control", "value": "no-cache" }
       ]
     }
   ]
