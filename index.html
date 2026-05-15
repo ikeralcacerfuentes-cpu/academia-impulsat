@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
 
@@ -94,6 +94,7 @@
       <div class="stats-grid" id="statsGrid">
         <div class="stat-card loading"></div><div class="stat-card loading"></div><div class="stat-card loading"></div>
         <div class="stat-card loading"></div><div class="stat-card loading"></div><div class="stat-card loading"></div>
+        <div class="stat-card loading"></div>
       </div>
       <div class="dashboard-grid">
         <div class="card"><div class="card-header"><h3>Renovacions pròximes <span class="badge badge-warning" id="renewalCount">0</span></h3></div><div id="renewalList" class="item-list"></div></div>
@@ -113,12 +114,18 @@
           <select class="input input-sm" id="studentStatusFilter" onchange="filterStudents()">
             <option value="">Tots els estats</option><option value="actiu">Actiu</option><option value="pausat">Pausat</option><option value="baixa">Baixa</option>
           </select>
+          <select class="input input-sm" id="studentSchoolFilter" onchange="filterStudents()">
+            <option value="">Tots els col·legis</option>
+          </select>
+          <select class="input input-sm" id="studentCourseFilter" onchange="filterStudents()">
+            <option value="">Tots els cursos</option>
+          </select>
         </div>
         <button class="btn btn-primary" onclick="openStudentForm()">+ Nou alumne</button>
       </div>
       <div class="card">
         <table class="table" id="studentsTable">
-          <thead><tr><th>Nom</th><th>Curs</th><th>Telèfon</th><th>Preu/mes</th><th>Renovació</th><th>Estat</th><th>Accions</th></tr></thead>
+          <thead><tr><th>Nom</th><th>Col·legi</th><th>Curs</th><th>Telèfon</th><th>Tarifa actual</th><th>Renovació</th><th>Estat</th><th>Accions</th></tr></thead>
           <tbody id="studentsTbody"></tbody>
         </table>
         <div class="empty-state" id="studentsEmpty" style="display:none"><div class="empty-icon">👩‍🎓</div><p>Encara no hi ha alumnes.</p><button class="btn btn-primary" onclick="openStudentForm()">Afegir primer alumne</button></div>
@@ -233,20 +240,17 @@
   </section>
 </main>
 
-<!-- FIX: usar unpkg en lugar de jsdelivr, que es el CDN oficial de Supabase -->
-<script src="https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<script src="/supabase-config.js"></script>
-<script src="/app.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-config.js"></script>
+<script src="app.js"></script>
 <script>
-  // Registra service worker
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/service-worker.js').catch(err => console.warn('SW error:', err));
-    });
-  }
-  // Navegació per URL param
-  const sp = new URLSearchParams(window.location.search).get('section');
-  if (sp) window.addEventListener('DOMContentLoaded', () => setTimeout(() => navigate(sp), 300));
+if('serviceWorker' in navigator){
+  window.addEventListener('load',()=>{
+    navigator.serviceWorker.register('/service-worker.js').catch(()=>{});
+  });
+}
+const sp=new URLSearchParams(window.location.search).get('section');
+if(sp) window.addEventListener('DOMContentLoaded',()=>setTimeout(()=>navigate(sp),200));
 </script>
 </body>
 </html>
